@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"golang.org/x/oauth2"
@@ -30,9 +31,10 @@ func TestPanelSynchronizeCreateAndUpdate(t *testing.T) {
 			}
 		case "POST /v2/panels":
 			var body struct {
-				Scope      string   `json:"scope"`
-				TargetType string   `json:"target_type"`
-				Groups     []string `json:"group_openids"`
+				Scope      string         `json:"scope"`
+				TargetType string         `json:"target_type"`
+				Groups     []string       `json:"group_openids"`
+				Panel      qqCommandPanel `json:"panel"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Error(err)
@@ -41,6 +43,11 @@ func TestPanelSynchronizeCreateAndUpdate(t *testing.T) {
 			}
 			if body.Scope != "group" || body.TargetType != "specific" || !slices.Equal(body.Groups, groups) {
 				t.Errorf("create target = %+v", body)
+			}
+			for _, item := range body.Panel.Items {
+				if len(strings.Fields(item.Name)) != 1 {
+					t.Errorf("panel command %q includes arguments that would be sent as literal input", item.Name)
+				}
 			}
 			created = true
 			w.WriteHeader(http.StatusNoContent)

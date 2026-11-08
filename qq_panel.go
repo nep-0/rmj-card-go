@@ -64,11 +64,11 @@ func (c *qqPanelClient) Synchronize(ctx context.Context, groupIDs []string) erro
 		Remark: "RMJ Card 群指令",
 		Items: []qqPanelItem{
 			{Name: "/help", Type: "command", Desc: "查看帮助"},
-			{Name: "/bind 玩家名", Type: "command", Desc: "绑定 QQ 号与玩家名"},
-			{Name: "/card [玩家名]", Type: "command", Desc: "生成玩家卡片"},
-			{Name: "/stats [玩家名]", Type: "command", Desc: "查询玩家数据"},
-			{Name: "/good [玩家名]", Type: "command", Desc: "查询好人榜"},
-			{Name: "/bad [玩家名]", Type: "command", Desc: "查询仇人榜"},
+			{Name: "/bind", Type: "command", Desc: "绑定 QQ 号与玩家名"},
+			{Name: "/card", Type: "command", Desc: "生成玩家卡片，可追加玩家名"},
+			{Name: "/stats", Type: "command", Desc: "查询玩家数据，可追加玩家名"},
+			{Name: "/good", Type: "command", Desc: "查询好人榜，可追加玩家名"},
+			{Name: "/bad", Type: "command", Desc: "查询仇人榜，可追加玩家名"},
 		},
 	}
 	var panels qqPanelListResponse

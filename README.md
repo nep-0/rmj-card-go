@@ -32,6 +32,7 @@ docker run --rm -p 3000:3000 -v rmj-card-data:/app/data rmj-card
 ```
 
 The `/app/data` volume stores persistent QQ match-report configuration. Mount a named volume or host directory there when deploying the container.
+Like the original Node image, the entrypoint starts as root, repairs ownership of the mounted `/app/data`, then runs the service as the unprivileged `app` user through `su-exec`. The data mount must be writable and allow ownership changes; do not override the container user when relying on this startup repair.
 The GitHub Actions workflow publishes `ghcr.io/<owner>/<repository>` on pushes to `main` and version tags; pull requests build without publishing.
 
 ## HTTP API
@@ -46,7 +47,7 @@ The GitHub Actions workflow publishes `ghcr.io/<owner>/<repository>` on pushes t
 
 Enable the gateway bot with `QQ_BOT_ENABLED=true`, `QQ_BOT_APPID`, and `QQ_BOT_SECRET`. Group commands include `/help`, `/bind 玩家名`, `/card [玩家名]`, `/stats [玩家名]`, `/good [玩家名]`, `/bad [玩家名]`, `/add 场所ID`, `/start`, `/end`, and `/admin 用户ID`.
 QQ bindings persist as the upstream-compatible `data/qq-name-cache.json` flat QQ-ID-to-player-name object. Match-report groups, administrators, running state, and deduplication IDs use the upstream-compatible `data/qq-match-reports.json` flat group-ID-to-state object. Existing files at those paths can be reused directly; mount `/app/data` when using the container.
-The `QQ_BOT_PUBLIC_BASE_URL` value is used to build the `/card` response link; the chosen PNG is served by the HTTP API.
+`/card` renders and caches the PNG before replying with an inline Markdown image and command buttons. `QQ_BOT_PUBLIC_BASE_URL` must be a public HTTPS origin reachable by QQ to fetch that image. Binding confirmations and opponent rankings also include command buttons; unbound users receive a bind button. These replies use QQ custom Markdown and keyboard capabilities, so the bot must have the corresponding platform permissions.
 - `QQ_BOT_PUBLIC_BASE_URL`: public HTTPS origin serving this service; required by `/card`.
 - `QQ_BOT_STYLE`: `modern` (default) or `QH`.
 - `QQ_BOT_COMMAND_PREFIX`: command prefix (default `/`).

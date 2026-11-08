@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/nep-0/rmj"
 	"github.com/tencent-connect/botgo"
 	"github.com/tencent-connect/botgo/dto"
+	"github.com/tencent-connect/botgo/dto/keyboard"
 	"github.com/tencent-connect/botgo/event"
 	"github.com/tencent-connect/botgo/openapi"
 	"github.com/tencent-connect/botgo/token"
@@ -172,14 +174,14 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 			if err := b.players.Remember(user, arg); err != nil {
 				return b.reply(data, "玩家绑定写入失败："+err.Error())
 			}
-			return b.reply(data, fmt.Sprintf("已将 QQ %s 绑定到玩家「%s」。", user, strings.TrimSpace(arg)))
+			return b.replyCommands(data, fmt.Sprintf("已将 QQ %s 绑定到玩家「%s」。", user, strings.TrimSpace(arg)), false)
 		}
 		name := arg
 		if name == "" {
 			name, _ = b.players.Name(user)
 		}
 		if name == "" {
-			return b.reply(data, fmt.Sprintf("未找到你的玩家名称，请使用 /%s 玩家名 查询。", command))
+			return b.replyCommands(data, fmt.Sprintf("未找到你的玩家名称，请使用 /%s 玩家名 查询。", command), true)
 		}
 		switch command {
 		case "card":
@@ -191,7 +193,13 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 			if style != "modern" && style != "QH" {
 				return b.reply(data, "QQ_BOT_STYLE must be modern or QH")
 			}
-			return b.reply(data, fmt.Sprintf("玩家卡片：%s/api/player-cards/%s.png?style=%s", base, url.PathEscape(name), url.QueryEscape(style)))
+			image, err := b.cards.cachedPNG(ctx, name, style)
+			if err != nil {
+				return b.reply(data, err.Error())
+			}
+			hash := sha256.Sum256(image)
+			imageURL := fmt.Sprintf("%s/api/player-cards/%s.png?style=%s&v=%x", base, url.PathEscape(name), url.QueryEscape(style), hash[:8])
+			return b.replyCommands(data, fmt.Sprintf("![我的战绩 #1280px #1100px](%s)", imageURL), false)
 		case "stats":
 			player, err := b.cards.player(ctx, name)
 			if err != nil {
@@ -223,7 +231,7 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 					if len(records) > 10 {
 						records = records[len(records)-10:]
 					}
-					return b.reply(data, renderOpponents(player.Name, "好人榜", "好人值", records))
+					return b.replyCommands(data, renderOpponents(player.Name, "好人榜", "好人值", records), false)
 				}
 			}
 			result, err := b.cards.stats.GetOpponentStatistics(ctx, player.Name, page, 10)
@@ -234,7 +242,7 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 			if command == "good" {
 				label, valueLabel = "好人榜", "好人值"
 			}
-			return b.reply(data, renderOpponents(player.Name, label, valueLabel, result.Records))
+			return b.replyCommands(data, renderOpponents(player.Name, label, valueLabel, result.Records), false)
 		default:
 			return nil
 		}
@@ -247,6 +255,38 @@ func (b *qqBot) reply(data *dto.WSGroupATMessageData, text string) error {
 		return fmt.Errorf("reply to QQ group message: %w", err)
 	}
 	return nil
+}
+
+func (b *qqBot) replyCommands(data *dto.WSGroupATMessageData, content string, includeBind bool) error {
+	message := commandReply(content, includeBind)
+	message.MsgID = data.ID
+	_, err := b.api.PostGroupMessage(context.Background(), data.GroupID, message)
+	if err != nil {
+		return fmt.Errorf("reply to QQ group message: %w", err)
+	}
+	return nil
+}
+
+func commandReply(content string, includeBind bool) *dto.MessageToCreate {
+	prefix := env("QQ_BOT_COMMAND_PREFIX", "/")
+	button := func(id, label, command string, style int) *keyboard.Button {
+		return &keyboard.Button{
+			ID:         id,
+			RenderData: &keyboard.RenderData{Label: label, VisitedLabel: label, Style: style},
+			Action:     &keyboard.Action{Type: keyboard.ActionTypeAtBot, Data: prefix + command, Enter: true, Permission: &keyboard.Permission{Type: keyboard.PermissionTypAll}},
+		}
+	}
+	var buttons []*keyboard.Button
+	if includeBind {
+		buttons = []*keyboard.Button{button("rmj-bind", "绑定公式战", "bind ", 1)}
+	} else {
+		buttons = []*keyboard.Button{button("rmj-card", "我的战绩", "card", 1), button("rmj-good", "好人榜", "good", 3), button("rmj-bad", "仇人榜", "bad", 0)}
+	}
+	return &dto.MessageToCreate{
+		MsgType:  dto.MarkdownMsg,
+		Markdown: &dto.Markdown{Content: content},
+		Keyboard: &keyboard.MessageKeyboard{Content: &keyboard.CustomKeyboard{Rows: []*keyboard.Row{{Buttons: buttons}}}},
+	}
 }
 
 func renderOpponents(name, label, valueLabel string, opponents []rmj.OpponentStats) string {

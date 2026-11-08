@@ -7,12 +7,13 @@ ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/rmj-card .
 
 FROM alpine:3.22
-RUN addgroup -S app && adduser -S -G app app
+RUN apk add --no-cache su-exec && addgroup -S app && adduser -S -G app app
 WORKDIR /app
 COPY --from=build /out/rmj-card /usr/local/bin/rmj-card
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /app/data && chown -R app:app /app
 VOLUME ["/app/data"]
-USER app
 ENV PORT=3000
 EXPOSE 3000
-ENTRYPOINT ["/usr/local/bin/rmj-card"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["rmj-card"]
