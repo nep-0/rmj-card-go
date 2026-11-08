@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/nep-0/rmj"
@@ -20,12 +19,13 @@ import (
 )
 
 type qqBot struct {
-	api      openapi.OpenAPI
-	cards    *cardService
-	mu       sync.RWMutex
-	players  map[string]string
-	reports  *matchReportRegistry
-	reporter *matchReporter
+	api         openapi.OpenAPI
+	cards       *cardService
+	players     *qqNameCache
+	reports     *matchReportRegistry
+	panelGroups *panelGroupRegistry
+	panel       *qqPanelClient
+	reporter    *matchReporter
 }
 
 func startQQBot(ctx context.Context, cards *cardService) error {
@@ -40,11 +40,33 @@ func startQQBot(ctx context.Context, cards *cardService) error {
 	}
 	api := botgo.NewOpenAPI(appid, tokenSource).WithTimeout(30 * time.Second)
 	reports := newMatchReportRegistry(env("QQ_BOT_MATCH_REPORTS_FILE", "data/qq-match-reports.json"))
+	if err := reports.Load(); err != nil {
+		return fmt.Errorf("load match report registry: %w", err)
+	}
+	players := newQQNameCache(env("QQ_NAME_CACHE_FILE", "data/qq-name-cache.json"))
+	if err := players.Load(); err != nil {
+		return fmt.Errorf("load QQ name cache: %w", err)
+	}
+	panelGroups := newPanelGroupRegistry(env("QQ_BOT_PANEL_GROUPS_FILE", "data/qq-panel-groups.json"))
+	if err := panelGroups.Load(); err != nil {
+		return fmt.Errorf("load QQ panel groups: %w", err)
+	}
+	panel := newQQPanelClient(appid, tokenSource)
+	if envEnabled("QQ_BOT_PANEL_ENABLED", true) {
+		groupIDs, err := panelGroups.List()
+		if err != nil {
+			return fmt.Errorf("list QQ panel groups: %w", err)
+		}
+		if err := panel.Synchronize(ctx, groupIDs); err != nil {
+			return fmt.Errorf("synchronize QQ command panel: %w", err)
+		}
+	}
 	interval := 30 * time.Second
 	if ms, err := time.ParseDuration(env("QQ_BOT_MATCH_REPORT_INTERVAL_MS", "30000") + "ms"); err == nil {
 		interval = ms
 	}
-	bot := &qqBot{api: api, cards: cards, players: make(map[string]string), reports: reports}
+	bot := &qqBot{api: api, cards: cards, players: players, reports: reports, panelGroups: panelGroups, panel: panel}
+	cards.nameCache = players
 	bot.reporter = &matchReporter{history: rmj.NewMatchHistoryClient(&http.Client{Timeout: 30 * time.Second}), registry: reports, interval: interval, send: func(ctx context.Context, groupID, message string) error {
 		_, err := api.PostGroupMessage(ctx, groupID, &dto.MessageToCreate{Content: message})
 		return err
@@ -97,6 +119,18 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 			if !added {
 				return b.reply(data, "本群已配置对局报告。")
 			}
+			if _, err := b.panelGroups.Add(data.GroupID); err != nil {
+				return b.reply(data, "命令面板群组写入失败："+err.Error())
+			}
+			if envEnabled("QQ_BOT_PANEL_ENABLED", true) {
+				groupIDs, err := b.panelGroups.List()
+				if err != nil {
+					return b.reply(data, "读取命令面板群组失败："+err.Error())
+				}
+				if err := b.panel.Synchronize(ctx, groupIDs); err != nil {
+					return b.reply(data, "命令面板同步失败："+err.Error())
+				}
+			}
 			return b.reply(data, "已配置雀庄 "+arg+"；你已成为管理员。")
 		}
 		if command == "start" || command == "end" || command == "admin" {
@@ -132,16 +166,17 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 			if arg == "" {
 				return b.reply(data, "用法：/bind 玩家名")
 			}
-			b.mu.Lock()
-			b.players[user] = arg
-			b.mu.Unlock()
-			return b.reply(data, fmt.Sprintf("已将 QQ %s 绑定到玩家「%s」。", user, arg))
+			if user == "" {
+				return b.reply(data, "无法识别操作者。")
+			}
+			if err := b.players.Remember(user, arg); err != nil {
+				return b.reply(data, "玩家绑定写入失败："+err.Error())
+			}
+			return b.reply(data, fmt.Sprintf("已将 QQ %s 绑定到玩家「%s」。", user, strings.TrimSpace(arg)))
 		}
 		name := arg
 		if name == "" {
-			b.mu.RLock()
-			name = b.players[user]
-			b.mu.RUnlock()
+			name, _ = b.players.Name(user)
 		}
 		if name == "" {
 			return b.reply(data, fmt.Sprintf("未找到你的玩家名称，请使用 /%s 玩家名 查询。", command))

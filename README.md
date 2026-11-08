@@ -44,14 +44,22 @@ The GitHub Actions workflow publishes `ghcr.io/<owner>/<repository>` on pushes t
 
 ## QQ official bot
 
-Enable the gateway bot with `QQ_BOT_ENABLED=true`, `QQ_BOT_APPID`, and `QQ_BOT_SECRET`. Group commands include `/help`, `/bind 玩家名`, `/card [玩家名]`, `/stats [玩家名]`, `/good [玩家名]`, `/bad [玩家名]`, `/add 场所ID`, `/start`, `/end`, and `/admin 用户ID`. Bindings remain in memory; match-report groups, administrators, running state, and deduplication IDs persist to JSON.
-`/add` configures match reporting for the current group and grants the caller admin access. Group admins use `/start` to establish a baseline and begin reports, `/end` to stop, and `/admin 用户ID` to grant another admin.
+Enable the gateway bot with `QQ_BOT_ENABLED=true`, `QQ_BOT_APPID`, and `QQ_BOT_SECRET`. Group commands include `/help`, `/bind 玩家名`, `/card [玩家名]`, `/stats [玩家名]`, `/good [玩家名]`, `/bad [玩家名]`, `/add 场所ID`, `/start`, `/end`, and `/admin 用户ID`.
+QQ bindings persist as the upstream-compatible `data/qq-name-cache.json` flat QQ-ID-to-player-name object. Match-report groups, administrators, running state, and deduplication IDs use the upstream-compatible `data/qq-match-reports.json` flat group-ID-to-state object. Existing files at those paths can be reused directly; mount `/app/data` when using the container.
 The `QQ_BOT_PUBLIC_BASE_URL` value is used to build the `/card` response link; the chosen PNG is served by the HTTP API.
 - `QQ_BOT_PUBLIC_BASE_URL`: public HTTPS origin serving this service; required by `/card`.
 - `QQ_BOT_STYLE`: `modern` (default) or `QH`.
 - `QQ_BOT_COMMAND_PREFIX`: command prefix (default `/`).
 - `QQ_BOT_MATCH_REPORTS_FILE`: registry JSON path (default `data/qq-match-reports.json`).
-- `QQ_BOT_MATCH_REPORT_INTERVAL_MS`: match polling interval (default `30000`).
+- `QQ_NAME_CACHE_FILE`: QQ name cache path (default `data/qq-name-cache.json`).
+
+## Environment
+
+Copy `.env.example` and set the QQ credentials and public HTTPS origin before enabling the bot. `HOST` defaults to an empty host, which binds all interfaces, and `PORT` defaults to `3000`. `DISABLE_SVG` accepts `1`, `true`, or `yes` (case-insensitive) to disable SVG responses.
+
+`QQ_BOT_PANEL_GROUPS_FILE` stores the JSON array of groups whose command panel is enabled (default `data/qq-panel-groups.json`). `/add` registers each configured group; startup synchronizes the shared QQ command panel for those groups when `QQ_BOT_PANEL_ENABLED=true` (default). Set it to `false` to disable synchronization. `QQ_BOT_CARD_CACHE_MAX_ENTRIES` and `QQ_BOT_CARD_CACHE_MAX_BYTES` set PNG cache limits (defaults `512` and `67108864`); invalid or nonpositive values use defaults.
+
+Panel synchronization reuses an existing matching panel, preserves its API version, and adds persisted group targets; otherwise it creates a group-specific panel. Startup stops if enabled synchronization fails. Group registration remains persisted after a synchronization failure so startup can retry.
 
 ## Checks
 

@@ -32,6 +32,11 @@ type matchReportRegistry struct {
 func newMatchReportRegistry(file string) *matchReportRegistry {
 	return &matchReportRegistry{file: file, groups: make(map[string]groupReport)}
 }
+func (r *matchReportRegistry) Load() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.loadLocked()
+}
 func (r *matchReportRegistry) loadLocked() error {
 	if r.loaded {
 		return nil

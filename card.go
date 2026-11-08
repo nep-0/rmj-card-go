@@ -12,12 +12,15 @@ import (
 )
 
 type cardService struct {
-	stats  rmj.PlayerStatistics
-	images *renderCache
+	stats     rmj.PlayerStatistics
+	images    *renderCache
+	nameCache *qqNameCache
 }
 
 func newCardService(stats rmj.PlayerStatistics) *cardService {
-	return &cardService{stats: stats, images: newRenderCache(512, 64<<20, 5*time.Minute)}
+	maxEntries := envInt("QQ_BOT_CARD_CACHE_MAX_ENTRIES", 512, 1)
+	maxBytes := envInt("QQ_BOT_CARD_CACHE_MAX_BYTES", 67108864, 1)
+	return &cardService{stats: stats, images: newRenderCache(maxEntries, maxBytes, 5*time.Minute)}
 }
 
 func (s *cardService) player(ctx context.Context, name string) (rmj.PlayerStats, error) {
@@ -27,6 +30,11 @@ func (s *cardService) player(ctx context.Context, name string) (rmj.PlayerStats,
 	player, err := s.stats.GetPlayerStatistics(ctx, name)
 	if err != nil {
 		return rmj.PlayerStats{}, fmt.Errorf("fetch player statistics: %w", err)
+	}
+	if s.nameCache != nil {
+		if err := s.nameCache.Remember(player.QQ, player.Name); err != nil {
+			return rmj.PlayerStats{}, fmt.Errorf("remember QQ player name: %w", err)
+		}
 	}
 	return player, nil
 }
@@ -41,6 +49,10 @@ func (s *cardService) cardHandler(w http.ResponseWriter, r *http.Request) {
 	r.SetPathValue("name", name)
 	r.SetPathValue("format", format)
 	if format != "svg" && format != "png" {
+		http.NotFound(w, r)
+		return
+	}
+	if format == "svg" && disabled(env("DISABLE_SVG", "false")) {
 		http.NotFound(w, r)
 		return
 	}
