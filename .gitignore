@@ -1,0 +1,9 @@
+# Go build artifacts
+/rmj-card-go
+/rmj-card-go.exe
+/rmj-card-container-check
+*.test
+
+# Generated card previews
+*-live.png
+*-formula-card.png
