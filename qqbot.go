@@ -292,7 +292,7 @@ func commandReply(content string, includeBind bool) *dto.MessageToCreate {
 func renderOpponents(name, label, valueLabel string, opponents []rmj.OpponentStats) string {
 	lines := []string{name + " " + label, valueLabel + " 相遇 胜率 对手"}
 	for _, opponent := range opponents {
-		lines = append(lines, fmt.Sprintf("%3d  %4d  %6.2f%%  %s", opponent.Rivalry, opponent.Encounters, opponent.MyWinRate*100, opponent.OpponentName))
+		lines = append(lines, fmt.Sprintf("%3d  %4d  %6.2f%%  %s", opponent.Rivalry, opponent.Encounters, opponent.MyWinRate, opponent.OpponentName))
 	}
 	return strings.Join(lines, "\n")
 }

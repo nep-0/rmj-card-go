@@ -6,7 +6,7 @@ COPY . .
 ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/rmj-card .
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache su-exec && addgroup -S app && adduser -S -G app app
 WORKDIR /app
 COPY --from=build /out/rmj-card /usr/local/bin/rmj-card

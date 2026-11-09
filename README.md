@@ -46,6 +46,7 @@ The GitHub Actions workflow publishes `ghcr.io/<owner>/<repository>` on pushes t
 ## QQ official bot
 
 Enable the gateway bot with `QQ_BOT_ENABLED=true`, `QQ_BOT_APPID`, and `QQ_BOT_SECRET`. Group commands include `/help`, `/bind 玩家名`, `/card [玩家名]`, `/stats [玩家名]`, `/good [玩家名]`, `/bad [玩家名]`, `/add 场所ID`, `/start`, `/end`, and `/admin 用户ID`.
+`/good` and `/bad` display opponent win rates as percentages with two decimal places. The API already supplies percentage values (for example, `78.95` displays as `78.95%`), so no additional scaling is applied.
 QQ bindings persist as the upstream-compatible `data/qq-name-cache.json` flat QQ-ID-to-player-name object. Match-report groups, administrators, running state, and deduplication IDs use the upstream-compatible `data/qq-match-reports.json` flat group-ID-to-state object. Existing files at those paths can be reused directly; mount `/app/data` when using the container.
 `/card` renders and caches the PNG before replying with an inline Markdown image and command buttons. `QQ_BOT_PUBLIC_BASE_URL` must be a public HTTPS origin reachable by QQ to fetch that image. Binding confirmations and opponent rankings also include command buttons; unbound users receive a bind button. These replies use QQ custom Markdown and keyboard capabilities, so the bot must have the corresponding platform permissions.
 - `QQ_BOT_PUBLIC_BASE_URL`: public HTTPS origin serving this service; required by `/card`.
