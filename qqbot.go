@@ -250,7 +250,9 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 }
 
 func (b *qqBot) reply(data *dto.WSGroupATMessageData, text string) error {
+	start := time.Now()
 	_, err := b.api.PostGroupMessage(context.Background(), data.GroupID, &dto.MessageToCreate{Content: text, MsgID: data.ID})
+	recordQQReply(context.Background(), "text", qqCommand(data.Content), start, err)
 	if err != nil {
 		return fmt.Errorf("reply to QQ group message: %w", err)
 	}
@@ -258,13 +260,24 @@ func (b *qqBot) reply(data *dto.WSGroupATMessageData, text string) error {
 }
 
 func (b *qqBot) replyCommands(data *dto.WSGroupATMessageData, content string, includeBind bool) error {
+	start := time.Now()
 	message := commandReply(content, includeBind)
 	message.MsgID = data.ID
 	_, err := b.api.PostGroupMessage(context.Background(), data.GroupID, message)
+	recordQQReply(context.Background(), "command", qqCommand(data.Content), start, err)
 	if err != nil {
 		return fmt.Errorf("reply to QQ group message: %w", err)
 	}
 	return nil
+}
+
+func qqCommand(content string) string {
+	content = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(content), "@"))
+	parts := strings.Fields(strings.TrimPrefix(content, env("QQ_BOT_COMMAND_PREFIX", "/")))
+	if len(parts) == 0 {
+		return "unknown"
+	}
+	return "/" + parts[0]
 }
 
 func commandReply(content string, includeBind bool) *dto.MessageToCreate {

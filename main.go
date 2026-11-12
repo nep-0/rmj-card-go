@@ -33,8 +33,19 @@ func main() {
 	mux.HandleFunc("GET /api/player-cards/", service.cardHandler)
 	mux.HandleFunc("GET /api/player-stats/", service.statsHandler)
 	mux.HandleFunc("GET /api/player-opponents/", service.opponentsHandler)
+	metricsMux := http.NewServeMux()
+	if envEnabled("TELEMETRY_ENABLED", false) {
+		observedHandler, metricsHandler, err := instrumentRequests(mux)
+		if err != nil {
+			log.Fatal(fmt.Errorf("initialize OpenTelemetry: %w", err))
+		}
+		metricsMux.Handle("/metrics", metricsHandler)
+		metricsMux.Handle("/", observedHandler)
+	} else {
+		metricsMux.Handle("/", mux)
+	}
 
-	server := &http.Server{Addr: net.JoinHostPort(host, port), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: net.JoinHostPort(host, port), Handler: metricsMux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
