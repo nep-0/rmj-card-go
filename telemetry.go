@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
@@ -47,7 +47,7 @@ func (w *statusWriter) Write(body []byte) (int, error) {
 
 func newTelemetry(ctx context.Context) (*telemetry, http.Handler, error) {
 	res := resource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName("rmj-card"))
-	traceExporter, err := otlptracegrpc.New(ctx)
+	traceExporter, err := otlptracehttp.New(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
