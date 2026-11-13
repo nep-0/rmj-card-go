@@ -16,12 +16,18 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	xdraw "golang.org/x/image/draw"
 )
 
 var avatarClient = &http.Client{Timeout: 5 * time.Second}
 
 func fetchAvatar(ctx context.Context, client *http.Client, qq string) ([]byte, error) {
+	ctx, span := otel.Tracer("rmj-card").Start(ctx, "avatar.fetch", trace.WithAttributes(attribute.String("server.address", "q1.qlogo.cn")))
+	defer span.End()
 	if len(qq) < 5 || len(qq) > 12 {
 		return nil, nil
 	}
@@ -36,6 +42,8 @@ func fetchAvatar(ctx context.Context, client *http.Client, qq string) ([]byte, e
 	}
 	response, err := client.Do(request)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "avatar request failed")
 		return nil, err
 	}
 	defer response.Body.Close()

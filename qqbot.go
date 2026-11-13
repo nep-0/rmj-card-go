@@ -18,6 +18,9 @@ import (
 	"github.com/tencent-connect/botgo/event"
 	"github.com/tencent-connect/botgo/openapi"
 	"github.com/tencent-connect/botgo/token"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type qqBot struct {
@@ -89,6 +92,8 @@ func startQQBot(ctx context.Context, cards *cardService) error {
 
 func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 	return func(_ *dto.WSPayload, data *dto.WSGroupATMessageData) error {
+		ctx, commandSpan := otel.Tracer("rmj-card").Start(context.Background(), "qq.command "+qqCommand(data.Content), trace.WithAttributes(attribute.String("qq.command", qqCommand(data.Content))))
+		defer commandSpan.End()
 		content := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(data.Content), "@"))
 		prefix := env("QQ_BOT_COMMAND_PREFIX", "/")
 		if !strings.HasPrefix(content, prefix) {
@@ -103,7 +108,6 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 		if data.Author != nil {
 			user = data.Author.ID
 		}
-		ctx := context.Background()
 		if command == "help" {
 			return b.reply(data, "可用指令：\n/add 场所ID - 配置本群对局报告\n/start - 开始对局报告\n/end - 停止对局报告\n/admin 用户ID - 添加报告管理员\n/bind 玩家名 - 绑定玩家名\n/card [玩家名] - 生成玩家卡片\n/stats [玩家名] - 查询玩家数据\n/good [玩家名] - 查询好人榜\n/bad [玩家名] - 查询仇人榜")
 		}
@@ -252,7 +256,7 @@ func (b *qqBot) groupHandler() event.GroupATMessageEventHandler {
 func (b *qqBot) reply(data *dto.WSGroupATMessageData, text string) error {
 	start := time.Now()
 	_, err := b.api.PostGroupMessage(context.Background(), data.GroupID, &dto.MessageToCreate{Content: text, MsgID: data.ID})
-	recordQQReply(context.Background(), "text", qqCommand(data.Content), start, err)
+	telemetryState.recordQQReply(context.Background(), "text", qqCommand(data.Content), start, err)
 	if err != nil {
 		return fmt.Errorf("reply to QQ group message: %w", err)
 	}
@@ -264,7 +268,7 @@ func (b *qqBot) replyCommands(data *dto.WSGroupATMessageData, content string, in
 	message := commandReply(content, includeBind)
 	message.MsgID = data.ID
 	_, err := b.api.PostGroupMessage(context.Background(), data.GroupID, message)
-	recordQQReply(context.Background(), "command", qqCommand(data.Content), start, err)
+	telemetryState.recordQQReply(context.Background(), "command", qqCommand(data.Content), start, err)
 	if err != nil {
 		return fmt.Errorf("reply to QQ group message: %w", err)
 	}

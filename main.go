@@ -35,12 +35,13 @@ func main() {
 	mux.HandleFunc("GET /api/player-opponents/", service.opponentsHandler)
 	metricsMux := http.NewServeMux()
 	if envEnabled("TELEMETRY_ENABLED", false) {
-		observedHandler, metricsHandler, err := instrumentRequests(mux)
+		state, metricsHandler, err := newTelemetry(ctx)
 		if err != nil {
 			log.Fatal(fmt.Errorf("initialize OpenTelemetry: %w", err))
 		}
+		telemetryState = state
 		metricsMux.Handle("/metrics", metricsHandler)
-		metricsMux.Handle("/", observedHandler)
+		metricsMux.Handle("/", instrumentRequests(mux))
 	} else {
 		metricsMux.Handle("/", mux)
 	}
@@ -50,6 +51,11 @@ func main() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		if telemetryState != nil {
+			if err := telemetryState.traces.Shutdown(shutdownCtx); err != nil {
+				slog.Error("shutdown OpenTelemetry", "error", err)
+			}
+		}
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			slog.Error("shutdown HTTP server", "error", err)
 		}

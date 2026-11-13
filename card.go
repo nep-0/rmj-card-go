@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/nep-0/rmj"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type cardService struct {
@@ -24,11 +27,14 @@ func newCardService(stats rmj.PlayerStatistics) *cardService {
 }
 
 func (s *cardService) player(ctx context.Context, name string) (rmj.PlayerStats, error) {
+	ctx, span := otel.Tracer("rmj-card").Start(ctx, "data.player_statistics")
+	defer span.End()
 	if strings.TrimSpace(name) == "" {
 		return rmj.PlayerStats{}, fmt.Errorf("player name must not be empty")
 	}
 	player, err := s.stats.GetPlayerStatistics(ctx, name)
 	if err != nil {
+		span.RecordError(err)
 		return rmj.PlayerStats{}, fmt.Errorf("fetch player statistics: %w", err)
 	}
 	if s.nameCache != nil {
@@ -93,7 +99,14 @@ func (s *cardService) cardHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *cardService) cardSVG(ctx context.Context, player rmj.PlayerStats, style string) (string, error) {
-	history, err := s.stats.GetPlayerMatchHistory(ctx, player.Name, 1, 50)
+	ctx, span := otel.Tracer("rmj-card").Start(ctx, "card.compose", trace.WithAttributes(attribute.String("card.style", style)))
+	defer span.End()
+	historyCtx, historySpan := otel.Tracer("rmj-card").Start(ctx, "data.player_match_history")
+	history, err := s.stats.GetPlayerMatchHistory(historyCtx, player.Name, 1, 50)
+	if err != nil {
+		historySpan.RecordError(err)
+	}
+	historySpan.End()
 	club := ""
 	if err == nil {
 		if positions, points := matchHistory(player.Name, history.Records); len(positions) > 0 {
@@ -109,6 +122,8 @@ func (s *cardService) cardSVG(ctx context.Context, player rmj.PlayerStats, style
 }
 
 func (s *cardService) cachedPNG(ctx context.Context, name, style string) ([]byte, error) {
+	ctx, span := otel.Tracer("rmj-card").Start(ctx, "card.render_png", trace.WithAttributes(attribute.String("card.style", style)))
+	defer span.End()
 	key := name + "\x00" + style
 	return s.images.load(ctx, key, func(ctx context.Context) ([]byte, error) {
 		player, err := s.player(ctx, name)
@@ -119,7 +134,13 @@ func (s *cardService) cachedPNG(ctx context.Context, name, style string) ([]byte
 		if err != nil {
 			return nil, err
 		}
-		return renderPNG(ctx, svg)
+		renderCtx, renderSpan := otel.Tracer("rmj-card").Start(ctx, "image.draw")
+		data, err := renderPNG(renderCtx, svg)
+		if err != nil {
+			renderSpan.RecordError(err)
+		}
+		renderSpan.End()
+		return data, err
 	})
 }
 
